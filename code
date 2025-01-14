@@ -1,0 +1,165 @@
+# ------------------------------------------------------
+# 1. Imports
+# ------------------------------------------------------
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score
+
+# ------------------------------------------------------
+# 2. Load Dataset
+# ------------------------------------------------------
+df = pd.read_csv(r"C:\Users\neelj\Downloads\archive\AmesHousing.csv")
+# ------------------------------------------------------
+# 3. Basic Data Cleaning
+# ------------------------------------------------------
+# (A) Drop columns with >40% missing
+threshold = 0.4
+df = df.dropna(thresh=int(df.shape[0] * (1 - threshold)), axis=1)
+
+# (B) Fill numeric columns with median
+numeric_cols = df.select_dtypes(include=[np.number]).columns
+for col in numeric_cols:
+    if df[col].isnull().sum() > 0:
+        df[col] = df[col].fillna(df[col].median())
+
+# (C) Fill categorical columns with mode
+categorical_cols = df.select_dtypes(include=[object]).columns
+for col in categorical_cols:
+    if df[col].isnull().sum() > 0:
+        df[col] = df[col].fillna(df[col].mode()[0])
+
+# ------------------------------------------------------
+# 4. Encode Categorical Features
+# ------------------------------------------------------
+df_encoded = pd.get_dummies(df, drop_first=True)
+
+# ------------------------------------------------------
+# 5. Define Features and Target
+# ------------------------------------------------------
+if 'SalePrice' not in df_encoded.columns:
+    raise ValueError("'SalePrice' column not found in the dataset.")
+
+X = df_encoded.drop('SalePrice', axis=1)
+y = df_encoded['SalePrice']
+
+# ------------------------------------------------------
+# 6. Train-Test Split
+# ------------------------------------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+# ------------------------------------------------------
+# 7. Hyperparameter Tuning (Random Forest)
+# ------------------------------------------------------
+param_grid = {
+    'n_estimators': [100, 200],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5],
+    'min_samples_leaf': [1, 2]
+}
+
+rf = RandomForestRegressor(random_state=42)
+
+grid_search = GridSearchCV(
+    estimator=rf,
+    param_grid=param_grid,
+    scoring='neg_mean_squared_error',
+    cv=3,
+    n_jobs=-1,
+    verbose=1
+)
+grid_search.fit(X_train, y_train)
+best_rf = grid_search.best_estimator_
+
+print("\nBest parameters found:", grid_search.best_params_)
+
+# ------------------------------------------------------
+# 8. Model Evaluation
+# ------------------------------------------------------
+y_train_pred = best_rf.predict(X_train)
+y_test_pred = best_rf.predict(X_test)
+
+mse_train = mean_squared_error(y_train, y_train_pred)
+mse_test = mean_squared_error(y_test, y_test_pred)
+r2_train = r2_score(y_train, y_train_pred)
+r2_test = r2_score(y_test, y_test_pred)
+
+print(f"\nTrain MSE: {mse_train:.2f}, Train R^2: {r2_train:.2f}")
+print(f"Test MSE:  {mse_test:.2f}, Test R^2:  {r2_test:.2f}")
+
+# ------------------------------------------------------
+# 9. Plot 1: Actual vs. Predicted
+# ------------------------------------------------------
+plt.figure(figsize=(6, 5))
+plt.scatter(y_test, y_test_pred, alpha=0.6, color='blue')
+plt.xlabel("Actual SalePrice")
+plt.ylabel("Predicted SalePrice")
+plt.title("Actual vs. Predicted SalePrice")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("1_actual_vs_predicted.png", dpi=100)
+plt.close()
+
+# ------------------------------------------------------
+# 10. Plot 2: Residual Plot
+# ------------------------------------------------------
+residuals = y_test - y_test_pred
+plt.figure(figsize=(6, 5))
+plt.scatter(y_test_pred, residuals, alpha=0.6, color='red')
+plt.axhline(y=0, color='black', linestyle='--')
+plt.xlabel("Predicted SalePrice")
+plt.ylabel("Residual (Actual - Predicted)")
+plt.title("Residual Plot")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("2_residual_plot.png", dpi=100)
+plt.close()
+
+# ------------------------------------------------------
+# 11. Plot 3: Distribution of Predictions
+# ------------------------------------------------------
+plt.figure(figsize=(6, 5))
+sns.histplot(y_test_pred, kde=True, color='green')
+plt.xlabel("Predicted SalePrice")
+plt.title("Distribution of Predicted SalePrice")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("3_distribution_of_predictions.png", dpi=100)
+plt.close()
+
+# ------------------------------------------------------
+# 12. Plot 4: Feature Importances
+# ------------------------------------------------------
+importances = best_rf.feature_importances_
+feature_names = X.columns
+sorted_indices = np.argsort(importances)[::-1]
+
+# Top 20 for readability (adjust if needed)
+top_n = 20 if len(feature_names) > 20 else len(feature_names)
+top_features = feature_names[sorted_indices][:top_n]
+top_importances = importances[sorted_indices][:top_n]
+
+plt.figure(figsize=(8, 6))
+sns.barplot(
+    x=top_importances, 
+    y=top_features, 
+    palette="viridis"
+)
+plt.title("Feature Importances (Top 20)")
+plt.xlabel("Importance Score")
+plt.ylabel("Feature")
+plt.tight_layout()
+plt.savefig("4_feature_importance.png", dpi=100)
+plt.close()
+
+print("\nSaved the following plots:")
+print("1_actual_vs_predicted.png")
+print("2_residual_plot.png")
+print("3_distribution_of_predictions.png")
+print("4_feature_importance.png")
